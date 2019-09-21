@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "test": "promises-aplus-tests tests/adapter --reporter spec"
+  },
+  "dependencies": {
+    "promises-aplus-tests": "^2.1.2"
+  },
+  "devDependencies": {
+    "eslint": "^6.4.0"
+  }
+}
