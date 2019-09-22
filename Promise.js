@@ -3,6 +3,7 @@ var Promise = (function () {
         PENDING: 'pending',
         FULFILLED: 'fulfilled',
         REJECTED: 'rejected',
+        DONE: 'done',
     };
 
     function isPromise(item) {
@@ -10,7 +11,7 @@ var Promise = (function () {
     }
 
     function Promise(func) {
-        if (!func) {
+        if (typeof func !== 'function') {
             throw TypeError(func + ' is not a function');
         }
 
@@ -92,12 +93,24 @@ var Promise = (function () {
                             break;
                     }
 
-                    if (item.onFinally) {
-                        // onFinally возвращает результат в исходном виде: replaceResult = false
-                        callHandler(item.returnPromise, item.onFinally, returnAction, false);
+                    // В случае промиса done не вызываем обработку
+                    if (self.status !== STATUSES.DONE) {
+                        if (item.onDone) {
+                            // Обработчик вызывается только при наличии ошибки
+                            if (self.status === STATUSES.REJECTED) {
+                                item.onDone(self.data);
+                            }
+
+                            item.returnPromise._done();
+                        } else if (item.onFinally) {
+                            // onFinally возвращает результат в исходном виде: replaceResult = false
+                            callHandler(item.returnPromise, item.onFinally, returnAction, false);
+                        } else {
+                            // остальные возвращают свой результат: replaceResult = true
+                            callHandler(item.returnPromise, handler, returnAction, true);
+                        }
                     } else {
-                        // остальные возвращают свой результат: replaceResult = true
-                        callHandler(item.returnPromise, handler, returnAction, true);
+                        item.returnPromise._done();
                     }
                 });
             });
@@ -105,13 +118,14 @@ var Promise = (function () {
 
         // args используется для вывода ошибки о том, что лишние аргументы resolve и reject будут проиногрированы
         function changeStatus(status, data, args, name) {
+            if (args && args.length > 1) {
+                throw Error('Arguments in ' + name + ' will be ignored: ' + Object.values(args).slice(1).join(', '));
+            }
+
             if (self.status !== STATUSES.PENDING) {
                 return;
             }
 
-            if (args.length > 1) {
-                throw Error('Arguments in ' + name + ' will be ignored: ' + Object.values(args).slice(1).join(', '));
-            }
             self.status = status;
             self.data = data;
 
@@ -126,8 +140,12 @@ var Promise = (function () {
             changeStatus(STATUSES.REJECTED, error, arguments, 'reject');
         };
 
+        this._done = function () {
+            changeStatus(STATUSES.DONE, null, null, 'done');
+        };
+
         // then, catch, finally
-        function wait(onResolve, onReject, onFinally) {
+        function wait(onResolve, onReject, onFinally, onDone) {
             /*
                 Спецификация позволяет передавать в then, catch, finally не только функции,
                 в таком случае в новый промис попадает результат старого
@@ -141,6 +159,7 @@ var Promise = (function () {
                 onResolve: onResolve,
                 onReject: onReject,
                 onFinally: onFinally,
+                onDone: onDone,
             };
 
             if (self.status === STATUSES.PENDING) {
@@ -166,6 +185,10 @@ var Promise = (function () {
             return wait(null, null, onFinally);
         };
 
+        this.done = function (onDone) {
+            return wait(null, null, null, onDone || function () {});
+        };
+
         try {
             func(this._resolve, this._reject);
         } catch (e) {
@@ -176,7 +199,7 @@ var Promise = (function () {
     // Реализация all и race
     function handlePromisesArray(promises, onlyFirst) {
         if (!promises.length) {
-            return Promise._resolve([]);
+            return Promise.resolve([]);
         }
         var results = [];
         var handledCount = 0;

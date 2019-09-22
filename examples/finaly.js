@@ -9,7 +9,7 @@ new Promise((resolve, reject) => {
 });
 
 new Promise((resolve, reject) => {
-    throw new Error("error");
+    throw new Error("Ошибка");
 }).finally(function () {
     console.log("Промис завершён");
 }).catch(function (error) {

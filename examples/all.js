@@ -3,12 +3,12 @@ var Promise = require('../Promise.js');
 Promise.all([
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            resolve('First promise');
+            resolve('Первый элемент');
         }, 2000);
     }),
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            resolve('Second promise');
+            resolve('Второй элемент');
         }, 1000);
     }),
 ]).then(function (result) {
@@ -18,12 +18,12 @@ Promise.all([
 Promise.all([
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            resolve('First promise');
+            resolve('Результат будет проигнорирован');
         }, 2000);
     }),
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            reject('Second promise error');
+            reject('Обработается ошибка');
         }, 1000);
     }),
 ]).then(function (result) {
@@ -45,7 +45,7 @@ Promise.all([]).then(function (result) {
     console.log('4: ', result);
 });
 
-// 3:  [ 1, 42 ]
 // 4:  []
-// 2:  Second promise error
-// 1:  [ 'First promise', 'Second promise' ]
+// 3:  [ 1, 42 ]
+// 2:  Обработается ошибка
+// 1:  [ 'Первый элемент', 'Второй элемент' ]

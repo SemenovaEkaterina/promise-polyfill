@@ -3,12 +3,12 @@ var Promise = require('../Promise.js');
 Promise.race([
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            resolve('First promise');
+            resolve('Выполнится медленнее');
         }, 2000);
     }),
     new Promise(function (resolve, reject) {
         setTimeout(function () {
-            resolve('Second promise');
+            resolve('Выполнится быстрее');
         }, 1000);
     }),
 ]).then(function (result) {
