@@ -3,7 +3,6 @@ var Promise = (function () {
         PENDING: 'pending',
         FULFILLED: 'fulfilled',
         REJECTED: 'rejected',
-        DONE: 'done',
     };
 
     function isPromise(item) {
@@ -20,13 +19,27 @@ var Promise = (function () {
         this.handlers = [];
         var self = this;
 
+        // В случае done нет возвращаемого промиса -> выбрасывать ошибку
+        function callReturnReject(returnPromise, e) {
+            if (returnPromise) {
+                returnPromise._reject(e);
+            } else {
+                throw e;
+            }
+        }
+
+        function callReturnResolve(returnPromise, result) {
+            returnPromise && returnPromise._resolve(result);
+        }
+
         /*
             В func попадает resolve/reject возвращаемого промиса в зависимости от статуса текущего промиса.
             В случае onFinally нужно в новый промис передавать текущий результат,
             для этого используется параметр replaceResult.
          */
-        function callHandler(returnPromise, handler, func, replaceResult) {
+        function callHandler(returnPromise, handler, replaceResult) {
             var result = self.data;
+            var status = self.status;
             var isHandlerFunction = handler && typeof handler === 'function';
 
             if (handler && typeof handler === 'function') {
@@ -34,7 +47,7 @@ var Promise = (function () {
                 try {
                     handlerResult = handler(self.data);
                 } catch (e) {
-                    returnPromise._reject(e);
+                    callReturnReject(returnPromise, e);
                 }
                 if (handlerResult === self) {
                     throw TypeError('promise and result refer to the same object');
@@ -43,18 +56,22 @@ var Promise = (function () {
             }
             if (result && isPromise(result)) {
                 result.then(function (result) {
-                    returnPromise._resolve(result);
+                    callReturnResolve(returnPromise, result);
                 }, function (error) {
-                    returnPromise._reject(error);
+                    callReturnReject(returnPromise, error);
                 });
                 // Иначе разрезолвим в возвращенный промис значение
             } else {
                 // Если была обработка исключения, то резолвим результат
                 if (isHandlerFunction && replaceResult) {
-                    returnPromise._resolve(result);
+                    callReturnResolve(returnPromise, result);
                     // Иначе передаем с текщим статусом
                 } else {
-                    func(result);
+                    if (status === STATUSES.FULFILLED) {
+                        callReturnResolve(returnPromise, result);
+                    } else {
+                        callReturnReject(returnPromise, result);
+                    }
                 }
             }
         }
@@ -85,32 +102,18 @@ var Promise = (function () {
                     switch (self.status) {
                         case STATUSES.FULFILLED:
                             handler = item.onResolve;
-                            returnAction = item.returnPromise._resolve;
                             break;
                         case STATUSES.REJECTED:
                             handler = item.onReject;
-                            returnAction = item.returnPromise._reject;
                             break;
                     }
 
-                    // В случае промиса done не вызываем обработку
-                    if (self.status !== STATUSES.DONE) {
-                        if (item.onDone) {
-                            // Обработчик вызывается только при наличии ошибки
-                            if (self.status === STATUSES.REJECTED) {
-                                item.onDone(self.data);
-                            }
-
-                            item.returnPromise._done();
-                        } else if (item.onFinally) {
-                            // onFinally возвращает результат в исходном виде: replaceResult = false
-                            callHandler(item.returnPromise, item.onFinally, returnAction, false);
-                        } else {
-                            // остальные возвращают свой результат: replaceResult = true
-                            callHandler(item.returnPromise, handler, returnAction, true);
-                        }
+                    if (item.onFinally) {
+                        // onFinally возвращает результат в исходном виде: replaceResult = false
+                        callHandler(item.returnPromise, item.onFinally, false);
                     } else {
-                        item.returnPromise._done();
+                        // остальные возвращают свой результат: replaceResult = true
+                        callHandler(item.returnPromise, handler, true);
                     }
                 });
             });
@@ -140,26 +143,23 @@ var Promise = (function () {
             changeStatus(STATUSES.REJECTED, error, arguments, 'reject');
         };
 
-        this._done = function () {
-            changeStatus(STATUSES.DONE, null, null, 'done');
-        };
-
         // then, catch, finally
-        function wait(onResolve, onReject, onFinally, onDone) {
+        function wait(onResolve, onReject, onFinally, done) {
             /*
                 Спецификация позволяет передавать в then, catch, finally не только функции,
                 в таком случае в новый промис попадает результат старого
              */
-
-            var returnPromise = new Promise(function (res, rej) {
-            });
+            var returnPromise;
+            if (!done) {
+                returnPromise = new Promise(function (res, rej) {
+                });
+            }
 
             var handler = {
                 returnPromise: returnPromise,
                 onResolve: onResolve,
                 onReject: onReject,
-                onFinally: onFinally,
-                onDone: onDone,
+                onFinally: onFinally
             };
 
             if (self.status === STATUSES.PENDING) {
@@ -185,8 +185,8 @@ var Promise = (function () {
             return wait(null, null, onFinally);
         };
 
-        this.done = function (onDone) {
-            return wait(null, null, null, onDone || function () {});
+        this.done = function (onResolve, onReject) {
+            return wait(onResolve, onReject, null, true);
         };
 
         try {
@@ -203,7 +203,8 @@ var Promise = (function () {
         }
         var results = [];
         var handledCount = 0;
-        var resultPromise = new Promise(function() {});
+        var resultPromise = new Promise(function () {
+        });
 
         promises.forEach(function (item, i) {
             function addResult(result) {

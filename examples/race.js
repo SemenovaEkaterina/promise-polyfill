@@ -25,4 +25,4 @@ Promise.race([
 });
 
 // 2:  1
-// 1:  Second promise
+// 1:  Выполнится быстрее

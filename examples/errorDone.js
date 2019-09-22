@@ -7,7 +7,7 @@ var promise = new Promise(function (resolve, reject){
 promise.done(function (error) {
     console.log('Обработка ошибки', error);
 }).then(function () {
-    console.log('Будет проигннорировано');
-}).catch(function (error) {
-    console.log('Будет проигннорировано');
+    console.log('Нет промиса');
 });
+
+// TypeError: Cannot read property 'then' of undefined

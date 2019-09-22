@@ -15,3 +15,8 @@ new Promise((resolve, reject) => {
 }).catch(function (error) {
     console.log(error.name);
 });
+
+// Промис завершён
+// Error
+// Промис завершён
+// Результат
