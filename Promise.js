@@ -49,9 +49,6 @@ var Promise = (function () {
                 } catch (e) {
                     callReturnReject(returnPromise, e);
                 }
-                if (handlerResult === self) {
-                    throw TypeError('promise and result refer to the same object');
-                }
                 result = replaceResult ? handlerResult : result;
             }
             if (result && isPromise(result)) {

@@ -1,4 +1,4 @@
-// var Promise = require('../Promise');
+var Promise = require('../Promise');
 
 module.exports = {
     resolved: function (value) {
