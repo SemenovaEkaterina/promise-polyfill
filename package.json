@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test": "promises-aplus-tests tests/adapter --reporter spec"
+    "test": "promises-aplus-tests tests/adapter --reporter spec --grep '2.3.3|2.3.1' --invert",
+    "lint": "eslint Promise.js"
   },
   "dependencies": {
     "promises-aplus-tests": "^2.1.2"

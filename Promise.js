@@ -1,4 +1,7 @@
-var Promise = (function () {
+const nativePromise = Promise;
+const nativePromiseSting = 'function Promise() { [native code] }';
+
+module.exports = (function () {
     var STATUSES = {
         PENDING: 'pending',
         FULFILLED: 'fulfilled',
@@ -250,8 +253,10 @@ var Promise = (function () {
             rej(error);
         });
     };
+    // Закомментировано, чтобы работал метод done
+    if (nativePromise && nativePromise.toString() === nativePromiseSting) {
+        return nativePromise;
+    }
 
     return Promise;
 })();
-
-module.exports = Promise;
