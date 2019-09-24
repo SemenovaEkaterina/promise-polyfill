@@ -254,9 +254,9 @@ module.exports = (function () {
         });
     };
     // Закомментировано, чтобы работал метод done
-    if (nativePromise && nativePromise.toString() === nativePromiseSting) {
-        return nativePromise;
-    }
+    // if (nativePromise && nativePromise.toString() === nativePromiseSting) {
+    //     return nativePromise;
+    // }
 
     return Promise;
 })();
