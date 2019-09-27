@@ -1,4 +1,4 @@
-var Promise = require('../Promise.js');
+var {Promise} = require('../Promise.js');
 
 var promise = new Promise(function (resolve, reject){
     reject(42)

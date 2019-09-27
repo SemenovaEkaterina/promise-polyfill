@@ -1,4 +1,4 @@
-var Promise = require('../Promise.js');
+var {Promise} = require('../Promise.js');
 
 Promise.race([
     new Promise(function (resolve, reject) {

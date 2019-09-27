@@ -1,4 +1,4 @@
-var Promise = require('../Promise');
+var {Promise} = require('../Promise.js');
 
 new Promise((resolve, reject) => {
     setTimeout(() => resolve("Результат"), 1000)

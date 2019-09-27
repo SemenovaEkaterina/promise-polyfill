@@ -1,4 +1,6 @@
-var Promise = require('../Promise.js');
+global.Promise = undefined;
+
+var {Promise} = require('../Promise.js');
 
 var p = Promise.resolve('foo');
 

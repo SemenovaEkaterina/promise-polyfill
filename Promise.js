@@ -1,105 +1,180 @@
-const nativePromise = Promise;
-const nativePromiseSting = 'function Promise() { [native code] }';
+function getGlobal() {
+    return typeof window != 'undefined' ? window : typeof global != 'undefined' ? global : typeof self != 'undefined' ? self : this;
+}
 
-module.exports = (function () {
+(function (global) {
+    const nativePromise = global['Promise'];
+    const nativePromiseString = 'function Promise() { [native code] }';
+    const hasNative = nativePromise && nativePromise.toString() === nativePromiseString;
+
+    if (typeof exports !== 'undefined' && exports) {
+        exports.Promise = hasNative ? nativePromise : Promise;
+    } else {
+        if (typeof define == 'function' && define.amd) {
+            define(function () {
+                return hasNative ? nativePromise : Promise;
+            });
+        } else {
+            if (!hasNative) {
+                global['Promise'] = Promise;
+            }
+        }
+    }
+
     var STATUSES = {
         PENDING: 'pending',
         FULFILLED: 'fulfilled',
         REJECTED: 'rejected',
     };
 
-    function isPromise(item) {
-        return item && item.__proto__.constructor === Promise;
-    }
+    //----------------------------------------------------------------------
+    // Конструктор
+    //----------------------------------------------------------------------
 
     function Promise(func) {
         if (typeof func !== 'function') {
             throw TypeError(func + ' is not a function');
         }
 
-        this.status = STATUSES.PENDING;
-        this.data = null;
-        this.handlers = [];
-        var self = this;
-
-        // В случае done нет возвращаемого промиса -> выбрасывать ошибку
-        function callReturnReject(returnPromise, e) {
-            if (returnPromise) {
-                returnPromise._reject(e);
-            } else {
-                throw e;
-            }
+        if (!this instanceof Promise) {
+            throw new TypeError('Please use the \'new\' operator, this object constructor cannot be called as a function.');
         }
 
-        function callReturnResolve(returnPromise, result) {
-            returnPromise && returnPromise._resolve(result);
+        this._status = STATUSES.PENDING;
+        this._data = null;
+        this._handlers = [];
+
+        try {
+            func(this._resolve.bind(this), this._reject.bind(this));
+        } catch (e) {
+            this._reject(e);
         }
+    }
 
-        /*
-            В func попадает resolve/reject возвращаемого промиса в зависимости от статуса текущего промиса.
-            В случае onFinally нужно в новый промис передавать текущий результат,
-            для этого используется параметр replaceResult.
-         */
-        function callHandler(returnPromise, handler, replaceResult) {
-            var result = self.data;
-            var status = self.status;
-            var isHandlerFunction = handler && typeof handler === 'function';
+    Promise.prototype = {
+        constructor: Promise,
 
-            if (handler && typeof handler === 'function') {
-                var handlerResult;
-                try {
-                    handlerResult = handler(self.data);
-                } catch (e) {
-                    callReturnReject(returnPromise, e);
-                }
-                result = replaceResult ? handlerResult : result;
+        _resolve: function (result) {
+            changeStatus(this, STATUSES.FULFILLED, result, arguments, 'resolve');
+        },
+
+        _reject: function (error) {
+            changeStatus(this, STATUSES.REJECTED, error, arguments, 'reject');
+        },
+
+        then: function (onResolve, onReject) {
+            // По спецификации then может не принимать агрументов
+            return wait(this, onResolve, onReject);
+        },
+
+        catch: function (onReject) {
+            // По спецификации reject может не принимать агрументов
+            return this.then(null, onReject);
+        },
+
+        finally: function (onFinally) {
+            return wait(this, null, null, onFinally);
+        },
+
+        done: function (onResolve, onReject) {
+            return wait(this, onResolve, onReject, null, true);
+        },
+    };
+
+    //----------------------------------------------------------------------
+    // Утилиты
+    //----------------------------------------------------------------------
+
+    function isPromise(item) {
+        return item instanceof Promise;
+    }
+
+    // В случае done нет возвращаемого промиса -> выбрасывать ошибку
+    function callReturnReject(returnPromise, e) {
+        if (returnPromise) {
+            returnPromise._reject(e);
+        } else {
+            throw e;
+        }
+    }
+
+    function callReturnResolve(returnPromise, result) {
+        returnPromise && returnPromise._resolve(result);
+    }
+
+    /*
+        В func попадает resolve/reject возвращаемого промиса в зависимости от статуса текущего промиса.
+        В случае onFinally нужно в новый промис передавать текущий результат,
+        для этого используется параметр replaceResult.
+     */
+    function callHandler(promise, returnPromise, handler, replaceResult) {
+        var result = promise._data;
+        var status = promise._status;
+        var isHandlerFunction = handler && typeof handler === 'function';
+
+        if (isHandlerFunction) {
+            var handlerResult;
+            try {
+                handlerResult = handler(promise._data);
+            } catch (e) {
+                callReturnReject(returnPromise, e);
             }
-            if (result && isPromise(result)) {
-                result.then(function (result) {
-                    callReturnResolve(returnPromise, result);
-                }, function (error) {
-                    callReturnReject(returnPromise, error);
-                });
-                // Иначе разрезолвим в возвращенный промис значение
+            result = replaceResult ? handlerResult : result;
+        }
+        if (result && isPromise(result)) {
+            result.then(function (result) {
+                callReturnResolve(returnPromise, result);
+            }, function (error) {
+                callReturnReject(returnPromise, error);
+            });
+            // Иначе разрезолвим в возвращенный промис значение
+        } else {
+            // Если была обработка исключения, то резолвим результат
+            if (isHandlerFunction && replaceResult) {
+                callReturnResolve(returnPromise, result);
+                // Иначе передаем с текщим статусом
             } else {
-                // Если была обработка исключения, то резолвим результат
-                if (isHandlerFunction && replaceResult) {
+                if (status === STATUSES.FULFILLED) {
                     callReturnResolve(returnPromise, result);
-                    // Иначе передаем с текщим статусом
                 } else {
-                    if (status === STATUSES.FULFILLED) {
-                        callReturnResolve(returnPromise, result);
-                    } else {
-                        callReturnReject(returnPromise, result);
-                    }
+                    callReturnReject(returnPromise, result);
                 }
             }
         }
+    }
 
-        function handle(handlers) {
-            /*
-                "Promises/A+ point 2.2.4:
-                onFulfilled or onRejected must not be called until the execution context stack contains only platform
-                code"
+    function handle(promise, handlers) {
+        /*
+            "Promises/A+ point 2.2.4:
+            onFulfilled or onRejected must not be called until the execution context stack contains only platform
+            code"
 
-                promise.then(...)
+            promise.then(...)
 
-                // <resolve moment>
-                ...
-                // Этот код выполняется раньше, чем код в then
-                var a = 1;
+            // <resolve moment>
+            ...
+            // Этот код выполняется раньше, чем код в then
+            var a = 1;
 
-             */
+         */
 
-            setTimeout(function () {
-                if (self.status === STATUSES.PENDING) {
-                    return;
-                }
+        const self = promise;
 
-                (handlers || self.handlers).forEach(function (item) {
-                    var handler;
-                    var returnAction;
-                    switch (self.status) {
+        setTimeout(function () {
+            if (this._status === STATUSES.PENDING) {
+                return;
+            }
+
+            (handlers || self._handlers).forEach(function (item) {
+                var handler;
+
+                if (item.onFinally) {
+                    // onFinally возвращает результат в исходном виде: replaceResult = false
+                    callHandler(self, item.returnPromise, item.onFinally, false);
+                } else {
+                    // остальные возвращают свой результат: replaceResult = true
+
+                    switch (self._status) {
                         case STATUSES.FULFILLED:
                             handler = item.onResolve;
                             break;
@@ -108,93 +183,59 @@ module.exports = (function () {
                             break;
                     }
 
-                    if (item.onFinally) {
-                        // onFinally возвращает результат в исходном виде: replaceResult = false
-                        callHandler(item.returnPromise, item.onFinally, false);
-                    } else {
-                        // остальные возвращают свой результат: replaceResult = true
-                        callHandler(item.returnPromise, handler, true);
-                    }
-                });
+                    callHandler(self, item.returnPromise, handler, true);
+                }
+            });
+        }, 0);
+    }
+
+    // args используется для вывода ошибки о том, что лишние аргументы resolve и reject будут проиногрированы
+    function changeStatus(promise, status, data, args, name) {
+        if (args && args.length > 1) {
+            throw Error('Arguments in ' + name + ' will be ignored: ' + Object.values(args).slice(1).join(', '));
+        }
+
+        if (promise._status !== STATUSES.PENDING) {
+            return;
+        }
+
+        promise._status = status;
+        promise._data = data;
+
+        handle(promise);
+    }
+
+    // then, catch, finally
+    function wait(promise, onResolve, onReject, onFinally, done) {
+        /*
+            Спецификация позволяет передавать в then, catch, finally не только функции,
+            в таком случае в новый промис попадает результат старого
+         */
+        var returnPromise;
+        if (!done) {
+            returnPromise = new Promise(function (res, rej) {
             });
         }
 
-        // args используется для вывода ошибки о том, что лишние аргументы resolve и reject будут проиногрированы
-        function changeStatus(status, data, args, name) {
-            if (args && args.length > 1) {
-                throw Error('Arguments in ' + name + ' will be ignored: ' + Object.values(args).slice(1).join(', '));
-            }
+        var handler = {
+            returnPromise: returnPromise,
+            onResolve: onResolve,
+            onReject: onReject,
+            onFinally: onFinally
+        };
 
-            if (self.status !== STATUSES.PENDING) {
-                return;
-            }
-
-            self.status = status;
-            self.data = data;
-
-            handle();
+        if (promise._status === STATUSES.PENDING) {
+            promise._handlers.push(handler);
+        } else {
+            handle(promise, [handler]);
         }
 
-        this._resolve = function (result) {
-            changeStatus(STATUSES.FULFILLED, result, arguments, 'resolve');
-        };
-
-        this._reject = function (error) {
-            changeStatus(STATUSES.REJECTED, error, arguments, 'reject');
-        };
-
-        // then, catch, finally
-        function wait(onResolve, onReject, onFinally, done) {
-            /*
-                Спецификация позволяет передавать в then, catch, finally не только функции,
-                в таком случае в новый промис попадает результат старого
-             */
-            var returnPromise;
-            if (!done) {
-                returnPromise = new Promise(function (res, rej) {
-                });
-            }
-
-            var handler = {
-                returnPromise: returnPromise,
-                onResolve: onResolve,
-                onReject: onReject,
-                onFinally: onFinally
-            };
-
-            if (self.status === STATUSES.PENDING) {
-                self.handlers.push(handler);
-            } else {
-                handle([handler]);
-            }
-
-            return returnPromise;
-        }
-
-        this.then = function (onResolve, onReject) {
-            // По спецификации then может не принимать агрументов
-            return wait(onResolve, onReject);
-        };
-
-        this.catch = function (onReject) {
-            // По спецификации reject может не принимать агрументов
-            return self.then(null, onReject);
-        };
-
-        this.finally = function (onFinally) {
-            return wait(null, null, onFinally);
-        };
-
-        this.done = function (onResolve, onReject) {
-            return wait(onResolve, onReject, null, true);
-        };
-
-        try {
-            func(this._resolve, this._reject);
-        } catch (e) {
-            this._reject(e);
-        }
+        return returnPromise;
     }
+
+    //----------------------------------------------------------------------
+    // Методы класса
+    //----------------------------------------------------------------------
 
     // Реализация all и race
     function handlePromisesArray(promises, onlyFirst) {
@@ -253,10 +294,6 @@ module.exports = (function () {
             rej(error);
         });
     };
-    // Закомментировано, чтобы работал метод done
-    // if (nativePromise && nativePromise.toString() === nativePromiseSting) {
-    //     return nativePromise;
-    // }
 
     return Promise;
-})();
+})(getGlobal());

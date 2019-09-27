@@ -1,4 +1,4 @@
-var Promise = require('../Promise');
+var {Promise} = require('../Promise.js');
 
 Promise.resolve("Result").then(function (result) {
     console.log("Then: ", result);
